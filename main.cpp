@@ -281,8 +281,8 @@ string build_cmd(Command &cmd){
         tags += " -s";
     }
     string sf = "\"" + cmd.path + "/" + cmd.name + ".cpp\"";
-    cout << "g++ " << sf << " " << tags << " -o " + '\"' + cmd.output + "\"";
-    return "g++ " + sf + " " + tags + " -o " + "\"" + cmd.output + "\"" ;
+    cout << "g++ " << sf << " " << tags << " -o \"" + cmd.output + "\"";
+    return "g++ " + sf + " " + tags + " -o \"" + cmd.output + "\"" ;
 }
 
 int main(){
