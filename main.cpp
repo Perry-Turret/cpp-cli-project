@@ -55,35 +55,49 @@ bool isKeyword(TOKEN_TYPE t) {
     return std::find(std::begin(keywords), std::end(keywords), t) != std::end(keywords);
 }
 
-vector<Token> tokenize(const string& input){
+vector<Token> tokenize(const string& in){
     vector<Token> tokens;
-    string current;
-    for (size_t i = 0;i<input.size();i++){
-        if (input[i] == ' '){
-            if (!current.empty()){
-                tokens.push_back(ret_tok(current));
-                current.clear();
-            }
-        }else if(input[i] == '"'){
-            string rts;
+
+    for (size_t i = 0; i < in.size();){
+        
+        if (isspace(in[i])){
             i++;
-            while (i < input.size() && input[i] != '"'){
-                rts += input[i];
+        }
+
+        else if (in[i] == '"'){
+            i++;
+            string val;
+
+            while (i < in.size() && in[i] != '"'){
+                val += in[i];
                 i++;
             }
-            if (i >= input.size()) {
-                cout << "Error: missing closing quote\n";
-                break;
+
+            tokens.push_back(Token(STRING, val));
+
+            if (i < in.size()) i++;
+        }else if (in[i] == '('){
+            tokens.push_back(Token(LPAREN, "("));
+            i++;
+        }else if (in[i] == ')'){
+            tokens.push_back(Token(RPAREN, ")"));
+            i++;
+        }else if (in[i] == ','){
+            tokens.push_back(Token(COMMA, ","));
+            i++;
+        }else if (isalpha(in[i])){
+            string word;
+            while (i < in.size() &&
+                  (isalnum(in[i]) || in[i] == '_')){
+                word += in[i];
+                i++;
             }
-            tokens.push_back(Token(STRING, rts));
-        }else{
-            current += input[i];
+            tokens.push_back(ret_tok(word));
+        }else {
+            cout << "Unknown char (IDK what the hell this is): " << in[i] << "\n";
+            i++;
         }
     }
-    if (!current.empty()){
-        tokens.push_back(ret_tok(current));
-    }
-    tokens.push_back(Token(END, "EOF"));
     return tokens;
 }
 
@@ -91,6 +105,7 @@ struct Command{
     TOKEN_TYPE type;
     string name;
     string path;
+    bool low_data = false;
     bool unsafe_optim = false;
     bool fast_optim = false;
     bool high_optim = false;
@@ -117,6 +132,16 @@ public:
         }
         return commands;
     }
+
+    void debug_tok() {
+        for (size_t i = 0; i < tokens.size(); i++) {
+            cout << "[" << i << "] "
+                 << "type=" << tokens[i].type
+                 << " value=" << tokens[i].value
+                 << "\n";
+        }
+    }
+
 private:
     vector<Token> tokens;
     size_t pos;
@@ -127,9 +152,13 @@ private:
     }
 
     void eat(TOKEN_TYPE type){
-        if (current().type == type){ pos++;}else{cout << "Expected: " << type << " but got: " << current().type << "\n";}
+        if (current().type != type){
+            cout << "Parse error: expected " << type
+                << " got " << current().type << "\n";
+            return;
+        }
+        pos++;
     }
-
     Command parseMake(){
         Command cmd{};
         eat(MAKE);
@@ -139,7 +168,6 @@ private:
         cmd.type = MAKE;
         return cmd; 
     }
-
     Command parseBuild(){
         Command cmd{};
         eat(BUILD);
@@ -150,26 +178,29 @@ private:
         }
         if (current().type == WITH){
             eat(WITH);
-            if (current().type == LPAREN){
-                eat(LPAREN);
-                while (current().type != RPAREN){
-                    cmd.links.push_back(current().value);
-                    eat(STRING);
-                    if (current().type == COMMA) {
-                        eat(COMMA);
-                    } else if (current().type != RPAREN) {
-                        cout << "Expected ',' or ')' in WITH list, but got: " << current().type << "\n";
-                        break;
-                    }
+            eat(LPAREN);
+            eat(WITH);
+            eat(LPAREN);
+            while (current().type != RPAREN && current().type != END){
+                if (current().type != STRING){
+                    cout << "Expected string in WITH list\n";
+                    break;
                 }
-                eat(RPAREN);
+                cmd.links.push_back(current().value);
+                eat(STRING);
+                if (current().type == COMMA){
+                    eat(COMMA);
+                }
             }
+            eat(RPAREN);
+            eat(RPAREN);
         }
         if (current().type == OUT){
             eat(OUT);
             cmd.output = current().value; eat(STRING);
         }
         while (current().type == IDENT){
+            if (current().value == "low_data") cmd.low_data = true;
             if (current().value == "unsafe_optim") cmd.unsafe_optim = true;
             else if (current().value == "high_optim") cmd.high_optim = true;
             else if (current().value == "fast_optim") cmd.fast_optim = true;
@@ -198,7 +229,7 @@ void make_dir(const Command& cmd, const string& place){
     if (fs::exists(dir)){
         cout << "Found: " << place << "\n";
     }else{
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 10; i++) {
             cout << "\rCreating directory";
             for (int j = 0; j < (i % 4); j++) {
                 cout << ".";
@@ -217,6 +248,41 @@ void make_dir(const Command& cmd, const string& place){
         f << "#include <iostream>\n\nint main(){\n    //thanks for using my app!\n  std::cout << \"Hello, World!\";\n}";
         f.close();
     }
+    file = dir / ("README.md");
+    if (fs::exists(file)) {
+        cout << "File already exists: " << file << "\n";
+        return;
+    }else{
+        std::ofstream f(file);
+        f << "# file\n"
+         << "Generated by MyTool\n\n"
+         << "## How to run\n"
+         << "Compile with:\n"
+         << "g++ " << cmd.name << ".cpp -o " << cmd.name << "\n"
+         << "./" << cmd.name << "\n\n"
+         << "## Notes\n"
+         << "- This is a starter project\n"
+         << "- Modify freely\n";
+        f.close();
+    }
+}
+
+string build_cmd(Command &cmd){
+    string tags;
+    if (cmd.unsafe_optim){
+        tags = "-Ofast";
+    }else if (cmd.fast_optim){
+        tags = "-O3";
+    }else if (cmd.high_optim){
+        tags = "-O2";
+    }else{
+        tags = "-O0";
+    }if (cmd.low_data){
+        tags += " -s";
+    }
+    string sf = "\"" + cmd.path + "/" + cmd.name + ".cpp\"";
+    cout << "g++ " << sf << " " << tags << " -o " + '\"' + cmd.output + "\"";
+    return "g++ " + sf + " " + tags + " -o " + "\"" + cmd.output + "\"" ;
 }
 
 int main(){
@@ -227,9 +293,12 @@ int main(){
     vector<Token> tokens = tokenize(input);
     Parser p{tokens};
     vector<Command> cmds = p.parseProgram();
-    for (const auto &cmd : cmds){
+    for (auto &cmd : cmds){
         if (cmd.type == MAKE){
             make_dir(cmd, cmd.path);
+        }if (cmd.type == BUILD){
+            string c = build_cmd(cmd);
+            system(c.c_str());
         }
     }
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
