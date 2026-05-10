@@ -1,0 +1,15 @@
+Program     → Statement*
+
+Statement   → MakeStmt | BuildStmt
+
+MakeStmt    → "make" STRING "in" STRING
+
+BuildStmt   → "build" STRING OptIn OptWith OptOut
+
+OptIn       → "in" STRING | ε
+
+OptWith     → "with" "(" FileList ")" | ε
+
+OptOut      → "out" STRING | ε
+
+FileList    → STRING ("," STRING)*
